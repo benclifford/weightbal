@@ -9,8 +9,7 @@ import Data.List
 import Data.Maybe
 import System.IO
 import System.Environment
-
-numShards = 3
+import System.Random
 
 main = do
  l "weightbal"
@@ -29,7 +28,7 @@ main = do
 
  l $ "New scores: " ++ (show newScores)
 
- let p = partitionShards newScores
+ p <- partitionShards newScores
 
  l $ "Partitions: " ++ (show p)
 
@@ -49,7 +48,15 @@ readScores = read <$> readFile "scores.wb"
 writeScores sc= writeFile "scores.wb" (show sc)
 
 -- | a pretty bad partitioning function...
-partitionShards scores = [[head scores], [head $ tail scores], tail $ tail scores] 
+partitionShards scores = do
+  l <- forM scores $ \s -> do
+    part <- randomRIO (0,2 :: Integer)
+    return (s, part)
+  return [
+      map fst $ filter (\(_,p) -> p == 0) l,
+      map fst $ filter (\(_,p) -> p == 1) l,
+      map fst $ filter (\(_,p) -> p == 2) l
+    ]
 
 runPartitions ps = do
   l $ "Number of partitions to start: " ++ (show $ length ps)
@@ -58,7 +65,7 @@ runPartitions ps = do
     forkIO $ do
       putStrLn $ "Partition " ++ (show partition)
 
-      let (score :: Double) = fromInteger $ toInteger $ foldr1 (+) ((ord . head . fst) <$> partition)
+      let (score :: Double) = fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)
 
       putMVar mv (partition,score :: Double)
     return mv
@@ -66,7 +73,7 @@ runPartitions ps = do
     putStrLn $ "Waiting for thread..."
     v@(partition, score) <- takeMVar m
     putStrLn $ "Got result: " ++ (show v)
-    let prediction = foldr1 (+) (snd <$> partition)
+    let prediction = foldr (+) 0 (snd <$> partition)
     putStrLn $ "Predicted score: " ++ (show prediction)
     putStrLn $ "Actual score: " ++ (show score)
     let e = score - prediction
