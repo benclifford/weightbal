@@ -1,0 +1,11 @@
+Name: weightbal
+Version: 0.1
+License: BSD3
+Author: Ben Clifford <benc@cqx.ltd.uk>
+Maintainer: Ben Clifford <benc@cqx.ltd.uk>
+Build-Type: Simple
+Cabal-Version: >=1.6
+Executable weightbal
+  Build-Depends: base, random, old-time, directory
+  main-is: weightbal.hs
+
