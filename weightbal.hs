@@ -8,9 +8,12 @@ import Data.Char (ord)
 import Data.IORef
 import Data.List
 import Data.Maybe
+import System.Cmd
+import System.Exit
 import System.IO
 import System.Environment
 import System.Random
+import System.Time
 
 adj = 0.3
 
@@ -65,14 +68,22 @@ partitionShards scores = do
       map fst $ filter (\(_,p) -> p == 2) l
     ]
 
+getTime = getClockTime >>= (\(TOD sec _) -> return sec)
+
 runPartitions ps pk = do
   l $ "Number of partitions to start: " ++ (show $ length ps)
   mvIDs <- forM ps $ \partition -> do
     mv <- newEmptyMVar
     forkIO $ do
       putStrLn $ "Partition " ++ (show partition)
+      let cli = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
+      putStrLn $ "Will run: " ++ cli
+      sTime <- getTime
+      ec <- system $ cli
+      eTime <- getTime
+      when (ec /= ExitSuccess) $ exitFailure
 
-      let (score :: Double) = fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)
+      let (score :: Double) = fromInteger (eTime - sTime)
 
       putMVar mv (partition,score :: Double)
     return mv
