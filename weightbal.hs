@@ -47,7 +47,7 @@ main = do
 
 l s = hPutStrLn stderr s
 
-defaultScore prev = 1
+defaultScore prev = 60 -- one minute by default, though this should be calculated as an average of previous tests
 
 readLiveTestList :: IO [String]
 readLiveTestList =  lines <$> readFile "tests.sim"
@@ -71,15 +71,20 @@ partitionShards scores = do
 getTime = getClockTime >>= (\(TOD sec _) -> return sec)
 
 runPartitions ps pk = do
+  commitid <- head <$> getArgs
   l $ "Number of partitions to start: " ++ (show $ length ps)
-  mvIDs <- forM ps $ \partition -> do
+  let numberedPartition = [0..] `zip` ps
+  mvIDs <- forM numberedPartition $ \(np, partition) -> do
     mv <- newEmptyMVar
     forkIO $ do
       putStrLn $ "Partition " ++ (show partition)
-      let cli = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
-      putStrLn $ "Will run: " ++ cli
+      -- let cli = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
+      let testNames = join $ intersperse " " (fst <$> partition)
+      let shardnum = np
+      let cmd = "ssh -i ~/.ssh/id_root root@lulu.xeus.co.uk /home/benc/dockerfiles/functional-test-client2 " ++ commitid ++ " " ++ (show shardnum) ++ " http://${S3HOST}:1606" ++ (show shardnum) ++ "/xeus/ " ++ (testNames)
+      putStrLn $ "Will run: " ++ cmd
       sTime <- getTime
-      ec <- system $ cli
+      ec <- system $ cmd
       eTime <- getTime
       when (ec /= ExitSuccess) $ exitFailure
 
@@ -103,7 +108,7 @@ runPartitions ps pk = do
     let app = epp * adj
     putStrLn $ "Adjustment per prediction point: " ++ (show app)
     let npart = map (\(name, score) -> (name, score + score * app)) partition
-    writeIORef kRef (kNow + kNow * app)
+    writeIORef kRef (kNow + kNow * app * 0.3) -- 0.3 is rough scaling factor to counter that we're measuring k three times as much (with three partitions)
     putStrLn $ "New partition scores: " ++ (show npart)
     return npart
   let nscores = join nparts
