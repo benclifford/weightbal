@@ -5,6 +5,7 @@ import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad
 import Data.Char (ord)
+import Data.Function (on)
 import Data.IORef
 import Data.List
 import Data.Maybe
@@ -44,6 +45,7 @@ main = do
 
  putStrLn $ "Scores to write out: " ++ (show newScores')
  writeScores (nk, newScores')
+ showNewScores (nk, newScores')
 
 l s = hPutStrLn stderr s
 
@@ -123,3 +125,12 @@ runPartitions ps pk = do
   putStrLn $ "new k: " ++ (show nk)
   return (nk, nscores)
 
+showNewScores (nk, nscores) = do
+  putStrLn "=== TEST SCORES ==="
+  putStrLn $ "Test run startup time: "++(show nk)
+
+  let ss = sortBy (compare `on` snd) nscores
+
+  forM ss $ \(name, score) -> putStrLn $ name ++ ": " ++ (show score)
+
+  putStrLn "=== DONE ==="
