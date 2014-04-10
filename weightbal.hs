@@ -16,6 +16,8 @@ import System.Environment
 import System.Random
 import System.Time
 
+import qualified Bal
+
 adj = 0.2
 
 main = do
@@ -59,8 +61,10 @@ readScores = read <$> readFile "scores.wb"
 
 writeScores sc = writeFile "scores.wb" (show sc)
 
+partitionShards = partitionShardsBalanced
+
 -- | a pretty bad partitioning function...
-partitionShards scores = do
+partitionShardsRandom scores = do
   l <- forM scores $ \s -> do
     part <- randomRIO (0,2 :: Integer)
     return (s, part)
@@ -69,6 +73,8 @@ partitionShards scores = do
       map fst $ filter (\(_,p) -> p == 1) l,
       map fst $ filter (\(_,p) -> p == 2) l
     ]
+
+partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards Bal.emptyShards $ sortBy ((flip compare) `on` snd) scores
 
 getTime = getClockTime >>= (\(TOD sec _) -> return sec)
 
@@ -80,10 +86,10 @@ runPartitions ps pk = do
     mv <- newEmptyMVar
     forkIO $ do
       putStrLn $ "Partition " ++ (show partition)
-      -- let cli = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
       let testNames = join $ intersperse " " (fst <$> partition)
       let shardnum = np
       let cmd = "ssh -i ~/.ssh/id_root root@lulu.xeus.co.uk /home/benc/dockerfiles/functional-test-client2 " ++ commitid ++ " " ++ (show shardnum) ++ " http://${S3HOST}:1606" ++ (show shardnum) ++ "/xeus/ " ++ (testNames)
+      -- let cmd = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
       putStrLn $ "Will run: " ++ cmd
       sTime <- getTime
       ec <- system $ cmd
