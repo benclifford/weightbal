@@ -15,7 +15,7 @@ import System.Environment
 import System.Random
 import System.Time
 
-adj = 0.3
+adj = 0.2
 
 main = do
  l "weightbal"
@@ -108,7 +108,13 @@ runPartitions ps pk = do
     let app = epp * adj
     putStrLn $ "Adjustment per prediction point: " ++ (show app)
     let npart = map (\(name, score) -> (name, score + score * app)) partition
-    writeIORef kRef (kNow + kNow * app * 0.3) -- 0.3 is rough scaling factor to counter that we're measuring k three times as much (with three partitions)
+
+    let numParts = fromInteger $ toInteger $ length ps
+    let kApp = (1+app) ** (1/numParts)
+    -- use a different scale for k to attent to account for the fact
+    -- that it happens once per partition, not once per run
+    writeIORef kRef (kNow * kApp)
+
     putStrLn $ "New partition scores: " ++ (show npart)
     return npart
   let nscores = join nparts
