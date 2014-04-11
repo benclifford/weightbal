@@ -76,7 +76,7 @@ partitionShardsRandom scores = do
 
 -- the number of shards to run is encoded here as unary [] entries
 -- in the empty shard list.
-partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards [ [], [], [], [] ] $ sortBy ((flip compare) `on` snd) scores
+partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards [ [], [], [], [] ] $ sortBy (compare `on` snd) scores
 
 getTime = getClockTime >>= (\(TOD sec _) -> return sec)
 
