@@ -5,6 +5,7 @@ import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad
 import Data.Char (ord)
+import Data.Either (partitionEithers)
 import Data.Function (on)
 import Data.IORef
 import Data.List
@@ -48,16 +49,21 @@ main = do
  l $ "Partitions: "
  dumpPartitions p
 
- (nk, nscores) <- runPartitions p prevk
+ (res :: Either [Int] (Double, [(String, Double)])) <- runPartitions p prevk
+ case res of
+   Right (nk, nscores) -> do
 
- let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) newScores
+     let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) newScores
 
- putStrLn $ "Scores to write out:"
- dumpScores newScores'
- writeScores (nk, newScores')
- showNewScores (nk, newScores')
+     putStrLn $ "Scores to write out:"
+     dumpScores newScores'
+     writeScores (nk, newScores')
+     showNewScores (nk, newScores')
 
- putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
+     putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
+   Left fails -> do
+     putStrLn $ "Outer: some partitions failed: " ++ (show fails)
+    
 
 l s = hPutStrLn stderr s
 
@@ -130,44 +136,55 @@ runPartitions ps pk = do
       sTime <- getTime
       ec <- system $ cmd
       eTime <- getTime
-      when (ec /= ExitSuccess) $ exitFailure
-
-      let (score :: Double) = fromInteger (eTime - sTime)
-
-      putMVar mv (partition,score :: Double)
-    return mv
+      case ec of
+        ExitSuccess ->  do
+          let (score :: Double) = fromInteger (eTime - sTime)
+          putMVar mv (Right (partition,score :: Double))
+        ExitFailure f -> do
+          putMVar mv (Left f)
+    return (np, mv)
   kRef <- newIORef pk
-  nparts <- forM mvIDs $ \m -> do
+  nparts <- forM mvIDs $ \(np, m) -> do
     kNow <- readIORef kRef
-    putStrLn $ "Waiting for thread..."
-    v@(partition, score) <- takeMVar m
-    putStrLn $ "Got result: " ++ (show v)
-    let prediction = kNow + foldr (+) 0 (snd <$> partition)
-    putStrLn $ "Predicted time: " ++ (formatScore prediction) ++ "s"
-    putStrLn $ "Actual time: " ++ (formatScore score) ++ "s"
-    let e = score - prediction
-    putStrLn $ "Error: " ++ (formatScore e) ++ "s"
-    let epp = e / prediction
-    putStrLn $ "Error per prediction point: " ++ (formatScore epp) ++ "s"
-    let app = epp * adj
-    putStrLn $ "Adjustment per prediction point: " ++ (show app) ++ "s"
-    let npart = map (\(name, score) -> (name, score + score * app)) partition
+    putStrLn $ "Waiting for partition " ++ (show np)
 
-    let numParts = fromInteger $ toInteger $ length ps
-    let kApp = (1+app) ** (1/numParts)
+    thrOut <- takeMVar m
+    case thrOut of
+      (Right v@(partition, score)) -> do
+        putStrLn $ "Got result: " ++ (show v)
+        let prediction = kNow + foldr (+) 0 (snd <$> partition)
+        putStrLn $ "Predicted time: " ++ (formatScore prediction) ++ "s"
+        putStrLn $ "Actual time: " ++ (formatScore score) ++ "s"
+        let e = score - prediction
+        putStrLn $ "Error: " ++ (formatScore e) ++ "s"
+        let epp = e / prediction
+        putStrLn $ "Error per prediction point: " ++ (formatScore epp) ++ "s"
+        let app = epp * adj
+        putStrLn $ "Adjustment per prediction point: " ++ (show app) ++ "s"
+        let npart = map (\(name, score) -> (name, score + score * app)) partition
+
+        let numParts = fromInteger $ toInteger $ length ps
+        let kApp = (1+app) ** (1/numParts)
     -- use a different scale for k to attent to account for the fact
     -- that it happens once per partition, not once per run
-    writeIORef kRef (kNow * kApp)
+        writeIORef kRef (kNow * kApp)
 
-    putStrLn $ "New partition scores:"
-    dumpScores npart
-    return npart
-  let nscores = join nparts
-  putStrLn $ "All tested scores:"
-  dumpScores nscores
-  nk <- readIORef kRef
-  putStrLn $ "new k: " ++ (show nk)
-  return (nk, nscores)
+        putStrLn $ "New partition scores:"
+        dumpScores npart
+        return $ Right npart
+      (Left err) -> return  $ Left np
+
+  let (lefts :: [Int], rights :: [[(String, Double)]]) = partitionEithers nparts
+  if lefts == [] then do
+    let nscores = join rights
+    putStrLn $ "All tested scores:"
+    dumpScores nscores
+    nk <- readIORef kRef
+    putStrLn $ "new k: " ++ (show nk)
+    return $ Right (nk, nscores)
+   else do
+    putStrLn $ "Some partitions failed: " ++ (show lefts)
+    return $ Left lefts
 
 showNewScores (nk, nscores) = do
   putStrLn "=== TEST SCORES ==="
