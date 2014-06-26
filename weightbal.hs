@@ -27,15 +27,20 @@ main = do
 
  liveTestList <- readLiveTestList
 
- l $ "Test list: " ++ (show liveTestList)
+ l $ "Test list: "
+ forM_ liveTestList $ \t -> do
+   hPutStr stderr " "
+   hPutStrLn stderr t
 
  (prevk, prevScores) <- readScores
 
- l $ "Previous scores: " ++ (show prevScores)
+ l $ "Previous scores:"
+ dumpScores prevScores
 
  let newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
 
- l $ "New scores: " ++ (show newScores)
+ l $ "New scores:"
+ dumpScores newScores
 
  p <- partitionShards newScores
 
@@ -45,7 +50,8 @@ main = do
 
  let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) newScores
 
- putStrLn $ "Scores to write out: " ++ (show newScores')
+ putStrLn $ "Scores to write out:"
+ dumpScores newScores'
  writeScores (nk, newScores')
  showNewScores (nk, newScores')
 
@@ -62,6 +68,14 @@ readScores :: IO (Double, [(String, Double)])
 readScores = read <$> readFile "scores.wb"
 
 writeScores sc = writeFile "scores.wb" (show sc)
+
+dumpScores sc = forM_ sc $ \(name, time) -> do
+  hPutStr stderr "  "
+  hPutStr stderr name
+  hPutStr stderr ": "
+  hPutStr stderr (show time)
+  hPutStr stderr " seconds"
+  hPutStrLn stderr ""
 
 partitionShards = partitionShardsBalanced
 
