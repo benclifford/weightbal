@@ -11,6 +11,7 @@ import Data.IORef
 import Data.List
 import Data.Maybe
 import System.Cmd
+import System.Directory (doesFileExist)
 import System.Exit
 import System.IO
 import System.Environment
@@ -24,6 +25,8 @@ adj = 0.2
 
 numPartitions = 4
 
+scoreFilename = "scores.wb"
+
 main = do
  l "weightbal"
  args <- getArgs
@@ -36,7 +39,8 @@ main = do
    hPutStr stderr "  "
    hPutStrLn stderr t
 
- (prevk, prevScores) <- readScores
+ scoresExist <- doesFileExist scoreFilename
+ (prevk, prevScores) <- if scoresExist then readScores else return (initialDefaultScore,[])
 
  l $ "Previous scores:"
  dumpScores prevScores
@@ -70,15 +74,16 @@ main = do
 
 l s = hPutStrLn stderr s
 
-defaultScore prev = 60 -- one minute by default, though this should be calculated as an average of previous tests
+defaultScore prev = initialDefaultScore -- one minute by default, though this should be calculated as an average of previous tests
+initialDefaultScore = 60
 
 readLiveTestList :: IO [String]
 readLiveTestList =  lines <$> readFile "tests.sim"
 
 readScores :: IO (Double, [(String, Double)])
-readScores = read <$> readFile "scores.wb"
+readScores = read <$> readFile scoreFilename
 
-writeScores sc = writeFile "scores.wb" (show sc)
+writeScores sc = writeFile scoreFilename (show sc)
 
 dumpScores sc = forM_ sc $ \(name, time) -> do
   hPutStr stderr "  "
