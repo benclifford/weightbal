@@ -137,14 +137,14 @@ runPartitions ps pk = do
     v@(partition, score) <- takeMVar m
     putStrLn $ "Got result: " ++ (show v)
     let prediction = kNow + foldr (+) 0 (snd <$> partition)
-    putStrLn $ "Predicted score: " ++ (show prediction)
-    putStrLn $ "Actual score: " ++ (show score)
+    putStrLn $ "Predicted time: " ++ (formatScore prediction) ++ "s"
+    putStrLn $ "Actual time: " ++ (formatScore score) ++ "s"
     let e = score - prediction
-    putStrLn $ "Error: " ++ (show e)
+    putStrLn $ "Error: " ++ (formatScore e) ++ "s"
     let epp = e / prediction
-    putStrLn $ "Error per prediction point: " ++ (show epp)
+    putStrLn $ "Error per prediction point: " ++ (formatScore epp) ++ "s"
     let app = epp * adj
-    putStrLn $ "Adjustment per prediction point: " ++ (show app)
+    putStrLn $ "Adjustment per prediction point: " ++ (show app) ++ "s"
     let npart = map (\(name, score) -> (name, score + score * app)) partition
 
     let numParts = fromInteger $ toInteger $ length ps
