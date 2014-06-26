@@ -15,6 +15,7 @@ import System.IO
 import System.Environment
 import System.Random
 import System.Time
+import Text.Printf
 
 import qualified Bal
 
@@ -55,7 +56,7 @@ main = do
  writeScores (nk, newScores')
  showNewScores (nk, newScores')
 
- putStrLn $ "Theoretical test time per shard: " ++ (show $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
+ putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
 
 l s = hPutStrLn stderr s
 
@@ -73,7 +74,7 @@ dumpScores sc = forM_ sc $ \(name, time) -> do
   hPutStr stderr "  "
   hPutStr stderr name
   hPutStr stderr ": "
-  hPutStr stderr (show time)
+  hPutStr stderr (formatScore time)
   hPutStr stderr " seconds"
   hPutStrLn stderr ""
 
@@ -152,20 +153,26 @@ runPartitions ps pk = do
     -- that it happens once per partition, not once per run
     writeIORef kRef (kNow * kApp)
 
-    putStrLn $ "New partition scores: " ++ (show npart)
+    putStrLn $ "New partition scores:"
+    dumpScores npart
     return npart
   let nscores = join nparts
-  putStrLn $ "All tested scores: " ++ (show nscores)
+  putStrLn $ "All tested scores:"
+  dumpScores nscores
   nk <- readIORef kRef
   putStrLn $ "new k: " ++ (show nk)
   return (nk, nscores)
 
 showNewScores (nk, nscores) = do
   putStrLn "=== TEST SCORES ==="
-  putStrLn $ "Test run startup time: "++(show nk)
+  putStrLn $ "Test run startup time: "++(formatScore nk)
 
   let ss = sortBy (compare `on` snd) nscores
 
-  forM ss $ \(name, score) -> putStrLn $ name ++ ": " ++ (show score)
+  forM ss $ \(name, score) -> putStrLn $ name ++ ": " ++ (formatScore score)
 
   putStrLn "=== DONE ==="
+
+formatScore :: Double -> String
+formatScore s = printf "%.1f" s
+
