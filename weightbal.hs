@@ -82,8 +82,16 @@ partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards [ [], []
 
 getTime = getClockTime >>= (\(TOD sec _) -> return sec)
 
+-- take a string with %X single letter substitutions and
+-- substitute in the supplied substitutions
+subs :: String -> [ (Char, String) ] -> String
+('%':k:rest) `subs` l = (fromJust $ lookup k l) ++ (rest `subs` l)
+(c:rest) `subs` l = c:(rest `subs` l)
+[] `subs` l = []
+
+
 runPartitions ps pk = do
-  commitid <- head <$> getArgs
+  templateCLI <- (join . (intersperse " ")) <$> getArgs
   l $ "Number of partitions to start: " ++ (show $ length ps)
   let numberedPartition = [0..] `zip` ps
   mvIDs <- forM numberedPartition $ \(np, partition) -> do
@@ -92,7 +100,10 @@ runPartitions ps pk = do
       putStrLn $ "Partition " ++ (show partition)
       let testNames = join $ intersperse " " (fst <$> partition)
       let shardnum = np
-      let cmd = "ssh -i ~/.ssh/id_root root@lulu.xeus.co.uk /home/benc/dockerfiles/functional-test-client2 " ++ commitid ++ " " ++ (show shardnum) ++ " http://${S3HOST}:1606" ++ (show shardnum) ++ "/xeus/ " ++ (testNames)
+      let cmd = templateCLI `subs` [ ('S', (show shardnum))
+                                   , ('T', testNames)
+                                   ]
+--      let cmd = "ssh -i ~/.ssh/id_root root@lulu.xeus.co.uk /home/benc/dockerfiles/functional-test-client2 " ++ commitid ++ " " ++ (show shardnum) ++ " http://${S3HOST}:1606" ++ (show shardnum) ++ "/xeus/ " ++ (testNames)
       -- let cmd = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
       putStrLn $ "Will run: " ++ cmd
       sTime <- getTime
