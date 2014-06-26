@@ -45,7 +45,8 @@ main = do
 
  p <- partitionShards newScores
 
- l $ "Partitions: " ++ (show p)
+ l $ "Partitions: "
+ dumpPartitions p
 
  (nk, nscores) <- runPartitions p prevk
 
@@ -77,6 +78,10 @@ dumpScores sc = forM_ sc $ \(name, time) -> do
   hPutStr stderr (formatScore time)
   hPutStr stderr " seconds"
   hPutStrLn stderr ""
+
+dumpPartitions ps = forM_ (ps `zip` [0..]) $ \(p, n) -> do
+  hPutStrLn stderr $ "=== Partition " ++ (show n) ++ " ==="
+  dumpScores p
 
 partitionShards = partitionShardsBalanced
 
@@ -112,7 +117,8 @@ runPartitions ps pk = do
   mvIDs <- forM numberedPartition $ \(np, partition) -> do
     mv <- newEmptyMVar
     forkIO $ do
-      putStrLn $ "Partition " ++ (show partition)
+      putStrLn $ "Partition:" 
+      dumpScores partition
       let testNames = join $ intersperse " " (fst <$> partition)
       let shardnum = np
       let cmd = templateCLI `subs` [ ('S', (show shardnum))
