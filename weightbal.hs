@@ -63,8 +63,10 @@ main = do
      showNewScores (nk, newScores')
 
      putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
+     outputXUnit []
    Left fails -> do
      putStrLn $ "Outer: some partitions failed: " ++ (show fails)
+     outputXUnit fails
 
 l s = hPutStrLn stderr s
 
@@ -200,4 +202,14 @@ showNewScores (nk, nscores) = do
 
 formatScore :: Double -> String
 formatScore s = printf "%.1f" s
+
+-- | Output an xUnit file
+outputXUnit fails = writeFile "xunit-weightbal.xml" $
+     "<testsuite tests=\"" ++ (show numPartitions) ++ "\">"
+  ++ (concat $ map (\n -> shardStatus n) [0..numPartitions-1])
+  ++ "</testsuite>"
+  where
+   shardStatus n = if n `elem` fails then
+     "<testcase classname=\"sharding\" name=\"shard" ++ (show n) ++ "\"> <failure type=\"nonzeroReturnCode\">shard failed</failure></testcase>"
+    else  "<testcase classname=\"sharding\" name=\"shard" ++ (show n) ++ "\"/>"
 
