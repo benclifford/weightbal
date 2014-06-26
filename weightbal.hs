@@ -30,7 +30,7 @@ main = do
 
  l $ "Test list: "
  forM_ liveTestList $ \t -> do
-   hPutStr stderr " "
+   hPutStr stderr "  "
    hPutStrLn stderr t
 
  (prevk, prevScores) <- readScores
