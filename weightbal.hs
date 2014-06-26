@@ -49,6 +49,8 @@ main = do
  writeScores (nk, newScores')
  showNewScores (nk, newScores')
 
+ putStrLn $ "Theoretical test time per shard: " ++ (show $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
+
 l s = hPutStrLn stderr s
 
 defaultScore prev = 60 -- one minute by default, though this should be calculated as an average of previous tests
