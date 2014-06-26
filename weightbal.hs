@@ -68,9 +68,11 @@ main = do
 
      putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
      outputXUnit []
+     exitSuccess
    Left fails -> do
      putStrLn $ "Outer: some partitions failed: " ++ (show fails)
      outputXUnit fails
+     exitFailure
 
 l s = hPutStrLn stderr s
 
