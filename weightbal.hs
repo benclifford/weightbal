@@ -22,6 +22,8 @@ import qualified Bal
 
 adj = 0.2
 
+numPartitions = 4
+
 main = do
  l "weightbal"
  args <- getArgs
@@ -63,7 +65,6 @@ main = do
      putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
    Left fails -> do
      putStrLn $ "Outer: some partitions failed: " ++ (show fails)
-    
 
 l s = hPutStrLn stderr s
 
@@ -104,7 +105,8 @@ partitionShardsRandom scores = do
 
 -- the number of shards to run is encoded here as unary [] entries
 -- in the empty shard list.
-partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards [ [], [], [], [] ] $ sortBy (compare `on` snd) scores
+partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
+  where emptyPartitions = take numPartitions $ repeat []
 
 getTime = getClockTime >>= (\(TOD sec _) -> return sec)
 
