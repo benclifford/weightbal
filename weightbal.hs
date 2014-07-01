@@ -84,11 +84,8 @@ main = do
 optionallyShufflePartitions :: Bal.Shards -> IO Bal.Shards
 optionallyShufflePartitions shards = if not shuffleOrder
   then return shards
-  else mapM shufflePartition shards
+  else randomlyPermuteList =<< (mapM randomlyPermuteList shards)
  
-shufflePartition :: Bal.Shard -> IO Bal.Shard 
-shufflePartition shard = randomlyPermuteList shard
-
 randomlyPermuteList :: [e] -> IO [e]
 randomlyPermuteList [] = return []
 randomlyPermuteList [v] = return [v]
