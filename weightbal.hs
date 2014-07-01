@@ -21,6 +21,13 @@ import Text.Printf
 
 import qualified Bal
 
+-- | This should become a commandline parameter
+-- indicating whether the order of tests within
+-- a partition should be randomized.
+-- This is intended to help find hidden dependencies
+-- within tests by introducing more non-determinism.
+shuffleOrder = True
+
 adj = 0.2
 
 numPartitions = 4
@@ -50,7 +57,7 @@ main = do
  l $ "New scores:"
  dumpScores newScores
 
- p <- partitionShards newScores
+ p <- optionallyShufflePartitions =<< partitionShards newScores
 
  l $ "Partitions: "
  dumpPartitions p
@@ -73,6 +80,26 @@ main = do
      putStrLn $ "Outer: some partitions failed: " ++ (show fails)
      outputXUnit fails
      exitFailure
+
+optionallyShufflePartitions :: Bal.Shards -> IO Bal.Shards
+optionallyShufflePartitions shards = if not shuffleOrder
+  then return shards
+  else mapM shufflePartition shards
+ 
+shufflePartition :: Bal.Shard -> IO Bal.Shard 
+shufflePartition shard = randomlyPermuteList shard
+
+randomlyPermuteList :: [e] -> IO [e]
+randomlyPermuteList [] = return []
+randomlyPermuteList [v] = return [v]
+randomlyPermuteList l = do
+  pos <- randomRIO (0,length l - 1)
+  let v = l !! pos
+  let start = take pos l
+  let finish = drop (pos+1) l
+  let rest = start ++ finish
+  permutedRest <- randomlyPermuteList rest
+  return $ [v] ++ permutedRest
 
 l s = hPutStrLn stderr s
 
