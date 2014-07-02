@@ -44,8 +44,6 @@ defaultConfig = Config {
 type WeightBalEnv = ReaderT Config IO
 
 
-adj = _adj defaultConfig
-
 numPartitions = _numPartitions defaultConfig
 
 scoreFilename = "scores.wb"
@@ -174,7 +172,9 @@ subs :: String -> [ (Char, String) ] -> String
 [] `subs` l = []
 
 
-runPartitions ps pk = liftIO $ do
+runPartitions ps pk = do
+ adj <- _adj <$> ask
+ liftIO $ do
   templateCLI <- (join . (intersperse " ")) <$> getArgs
   l $ "Number of partitions to start: " ++ (show $ length ps)
   let numberedPartition = [0..] `zip` ps
