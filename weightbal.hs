@@ -23,7 +23,14 @@ import Text.Printf
 import qualified Bal
 
 data Config = Config {
+
+    -- | This should become a commandline parameter
+    -- indicating whether the order of tests within
+    -- a partition should be randomized.
+    -- This is intended to help find hidden dependencies
+    -- within tests by introducing more non-determinism.
     _shuffleOrder :: Bool,
+
     _adj :: Double,
     _numPartitions :: Int
   }
@@ -36,12 +43,6 @@ defaultConfig = Config {
 
 type WeightBalEnv = ReaderT Config IO
 
--- | This should become a commandline parameter
--- indicating whether the order of tests within
--- a partition should be randomized.
--- This is intended to help find hidden dependencies
--- within tests by introducing more non-determinism.
-shuffleOrder = _shuffleOrder defaultConfig
 
 adj = _adj defaultConfig
 
@@ -102,9 +103,11 @@ mainW = do
      liftIO $ exitFailure
 
 optionallyShufflePartitions :: Bal.Shards -> WeightBalEnv Bal.Shards
-optionallyShufflePartitions shards = if not shuffleOrder
-  then return shards
-  else randomlyPermuteList =<< (mapM randomlyPermuteList shards)
+optionallyShufflePartitions shards = do
+  o <- _shuffleOrder <$> ask
+  if not o
+    then return shards
+    else randomlyPermuteList =<< (mapM randomlyPermuteList shards)
  
 randomlyPermuteList :: [e] -> WeightBalEnv [e]
 randomlyPermuteList [] = return []
