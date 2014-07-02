@@ -44,8 +44,6 @@ defaultConfig = Config {
 type WeightBalEnv = ReaderT Config IO
 
 
-numPartitions = _numPartitions defaultConfig
-
 scoreFilename = "scores.wb"
 
 main :: IO ()
@@ -159,8 +157,10 @@ partitionShardsRandom scores = do
 
 -- the number of shards to run is encoded here as unary [] entries
 -- in the empty shard list.
-partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
-  where emptyPartitions = take numPartitions $ repeat []
+partitionShardsBalanced scores = do
+  numPartitions <- _numPartitions <$> ask
+  let emptyPartitions = take numPartitions $ repeat []
+  return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
 
 getTime = (liftIO getClockTime) >>= (\(TOD sec _) -> return sec)
 
@@ -258,7 +258,9 @@ formatScore :: Double -> String
 formatScore s = printf "%.1f" s
 
 -- | Output an xUnit file
-outputXUnit fails = liftIO $ writeFile "xunit-weightbal.xml" $
+outputXUnit fails = do
+ numPartitions <- _numPartitions <$> ask
+ liftIO $ writeFile "xunit-weightbal.xml" $
      "<testsuite tests=\"" ++ (show numPartitions) ++ "\">"
   ++ (concat $ map (\n -> shardStatus n) [0..numPartitions-1])
   ++ "</testsuite>"
