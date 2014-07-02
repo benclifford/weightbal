@@ -58,6 +58,9 @@ main = do
 
  let (os, args, unrecogniseds, errors) = getOpt' RequireOrder cliOptions cli
 
+ when (unrecogniseds /= []) $ error $ "Unrecognised command line parameter(s): " ++ (join $ intersperse ", " unrecogniseds)
+ when (errors /= []) $ error $ "Command line parameter error(s): " ++ (join $ intersperse ", " errors)
+
  let config = defaultConfig { _args = args }
 
  runReaderT mainW config
