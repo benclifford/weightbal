@@ -46,7 +46,9 @@ defaultConfig = Config {
 
 type WeightBalEnv = ReaderT Config IO
 
-cliOptions = []
+cliOptions = [
+    Option "n" ["partitions"] (ReqArg (\param -> \c -> c { _numPartitions = read param} ) "NUM") "Number of partitions"
+  ]
 
 scoreFilename = "scores.wb"
 
@@ -63,7 +65,13 @@ main = do
 
  let config = defaultConfig { _args = args }
 
- runReaderT mainW config
+ let config' = applyAll os config
+
+ runReaderT mainW config'
+
+applyAll :: [a->a] -> a -> a
+applyAll [] v = v
+applyAll (f:fs) v = f (applyAll fs v)
 
 mainW :: WeightBalEnv ()
 mainW = do
