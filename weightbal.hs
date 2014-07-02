@@ -21,16 +21,28 @@ import Text.Printf
 
 import qualified Bal
 
+data Config = Config {
+    _shuffleOrder :: Bool,
+    _adj :: Double,
+    _numPartitions :: Int
+  }
+
+defaultConfig = Config {
+    _shuffleOrder = True,
+    _adj = 0.2,
+    _numPartitions = 4
+  }
+
 -- | This should become a commandline parameter
 -- indicating whether the order of tests within
 -- a partition should be randomized.
 -- This is intended to help find hidden dependencies
 -- within tests by introducing more non-determinism.
-shuffleOrder = True
+shuffleOrder = _shuffleOrder defaultConfig
 
-adj = 0.2
+adj = _adj defaultConfig
 
-numPartitions = 4
+numPartitions = _numPartitions defaultConfig
 
 scoreFilename = "scores.wb"
 
