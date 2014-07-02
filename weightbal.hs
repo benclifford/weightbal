@@ -12,6 +12,7 @@ import Data.IORef
 import Data.List
 import Data.Maybe
 import System.Cmd
+import System.Console.GetOpt
 import System.Directory (doesFileExist)
 import System.Exit
 import System.IO
@@ -32,26 +33,34 @@ data Config = Config {
     _shuffleOrder :: Bool,
 
     _adj :: Double,
-    _numPartitions :: Int
+    _numPartitions :: Int,
+    _args :: [String]
   }
 
 defaultConfig = Config {
     _shuffleOrder = True,
     _adj = 0.2,
-    _numPartitions = 4
+    _numPartitions = 4,
+    _args = []
   }
 
 type WeightBalEnv = ReaderT Config IO
 
+cliOptions = []
 
 scoreFilename = "scores.wb"
 
 main :: IO ()
 main = do
  l "weightbal"
- args <- getArgs
- l $ "Args: " ++ (show args)
- runReaderT mainW defaultConfig
+ cli <- getArgs
+ l $ "Args: " ++ (show cli)
+
+ let (os, args, unrecogniseds, errors) = getOpt' RequireOrder cliOptions cli
+
+ let config = defaultConfig { _args = args }
+
+ runReaderT mainW config
 
 mainW :: WeightBalEnv ()
 mainW = do
@@ -174,8 +183,9 @@ subs :: String -> [ (Char, String) ] -> String
 
 runPartitions ps pk = do
  adj <- _adj <$> ask
+ args <- _args <$> ask
  liftIO $ do
-  templateCLI <- (join . (intersperse " ")) <$> getArgs
+  let templateCLI = (join . (intersperse " ")) args
   l $ "Number of partitions to start: " ++ (show $ length ps)
   let numberedPartition = [0..] `zip` ps
   mvIDs <- forM numberedPartition $ \(np, partition) -> do
