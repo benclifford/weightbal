@@ -6,6 +6,6 @@ Maintainer: Ben Clifford <benc@cqx.ltd.uk>
 Build-Type: Simple
 Cabal-Version: >=1.6
 Executable weightbal
-  Build-Depends: base, random, old-time, directory, process
+  Build-Depends: base, random, old-time, directory, process, mtl
   main-is: weightbal.hs
   ghc-options: -threaded

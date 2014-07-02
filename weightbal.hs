@@ -4,6 +4,7 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad
+import Control.Monad.Reader
 import Data.Char (ord)
 import Data.Either (partitionEithers)
 import Data.Function (on)
@@ -33,6 +34,8 @@ defaultConfig = Config {
     _numPartitions = 4
   }
 
+type WeightBalEnv = ReaderT Config IO
+
 -- | This should become a commandline parameter
 -- indicating whether the order of tests within
 -- a partition should be randomized.
@@ -46,19 +49,24 @@ numPartitions = _numPartitions defaultConfig
 
 scoreFilename = "scores.wb"
 
+main :: IO ()
 main = do
  l "weightbal"
  args <- getArgs
  l $ "Args: " ++ (show args)
+ runReaderT mainW defaultConfig
+
+mainW :: WeightBalEnv ()
+mainW = do
 
  liveTestList <- readLiveTestList
 
  l $ "Test list: "
- forM_ liveTestList $ \t -> do
+ forM_ liveTestList $ \t -> liftIO $ do
    hPutStr stderr "  "
    hPutStrLn stderr t
 
- scoresExist <- doesFileExist scoreFilename
+ scoresExist <- liftIO $ doesFileExist scoreFilename
  (prevk, prevScores) <- if scoresExist then readScores else return (initialDefaultScore,[])
 
  l $ "Previous scores:"
@@ -80,29 +88,29 @@ main = do
 
      let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) newScores
 
-     putStrLn $ "Scores to write out:"
+     liftIO $ putStrLn $ "Scores to write out:"
      dumpScores newScores'
      writeScores (nk, newScores')
      showNewScores (nk, newScores')
 
-     putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
+     liftIO $ putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
      outputXUnit []
-     exitSuccess
+     liftIO $ exitSuccess
    Left fails -> do
-     putStrLn $ "Outer: some partitions failed: " ++ (show fails)
+     liftIO $ putStrLn $ "Outer: some partitions failed: " ++ (show fails)
      outputXUnit fails
-     exitFailure
+     liftIO $ exitFailure
 
-optionallyShufflePartitions :: Bal.Shards -> IO Bal.Shards
+optionallyShufflePartitions :: Bal.Shards -> WeightBalEnv Bal.Shards
 optionallyShufflePartitions shards = if not shuffleOrder
   then return shards
   else randomlyPermuteList =<< (mapM randomlyPermuteList shards)
  
-randomlyPermuteList :: [e] -> IO [e]
+randomlyPermuteList :: [e] -> WeightBalEnv [e]
 randomlyPermuteList [] = return []
 randomlyPermuteList [v] = return [v]
 randomlyPermuteList l = do
-  pos <- randomRIO (0,length l - 1)
+  pos <- liftIO $ randomRIO (0,length l - 1)
   let v = l !! pos
   let start = take pos l
   let finish = drop (pos+1) l
@@ -110,20 +118,20 @@ randomlyPermuteList l = do
   permutedRest <- randomlyPermuteList rest
   return $ [v] ++ permutedRest
 
-l s = hPutStrLn stderr s
+l s = liftIO $ hPutStrLn stderr s
 
 defaultScore prev = initialDefaultScore -- one minute by default, though this should be calculated as an average of previous tests
 initialDefaultScore = 60
 
-readLiveTestList :: IO [String]
-readLiveTestList =  lines <$> readFile "tests.sim"
+readLiveTestList :: WeightBalEnv [String]
+readLiveTestList =  liftIO $ lines <$> readFile "tests.sim"
 
-readScores :: IO (Double, [(String, Double)])
-readScores = read <$> readFile scoreFilename
+readScores :: WeightBalEnv (Double, [(String, Double)])
+readScores = liftIO $ read <$> readFile scoreFilename
 
-writeScores sc = writeFile scoreFilename (show sc)
+writeScores sc = liftIO $ writeFile scoreFilename (show sc)
 
-dumpScores sc = forM_ sc $ \(name, time) -> do
+dumpScores sc = liftIO $ forM_ sc $ \(name, time) -> do
   hPutStr stderr "  "
   hPutStr stderr name
   hPutStr stderr ": "
@@ -131,7 +139,7 @@ dumpScores sc = forM_ sc $ \(name, time) -> do
   hPutStr stderr " seconds"
   hPutStrLn stderr ""
 
-dumpPartitions ps = forM_ (ps `zip` [0..]) $ \(p, n) -> do
+dumpPartitions ps = liftIO $ forM_ (ps `zip` [0..]) $ \(p, n) -> do
   hPutStrLn stderr $ "=== Partition " ++ (show n) ++ " ==="
   dumpScores p
 
@@ -140,7 +148,7 @@ partitionShards = partitionShardsBalanced
 -- | a pretty bad partitioning function...
 partitionShardsRandom scores = do
   l <- forM scores $ \s -> do
-    part <- randomRIO (0,2 :: Integer)
+    part <- liftIO $ randomRIO (0,2 :: Integer)
     return (s, part)
   return [
       map fst $ filter (\(_,p) -> p == 0) l,
@@ -153,7 +161,7 @@ partitionShardsRandom scores = do
 partitionShardsBalanced scores = return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
   where emptyPartitions = take numPartitions $ repeat []
 
-getTime = getClockTime >>= (\(TOD sec _) -> return sec)
+getTime = (liftIO getClockTime) >>= (\(TOD sec _) -> return sec)
 
 -- take a string with %X single letter substitutions and
 -- substitute in the supplied substitutions
@@ -163,7 +171,7 @@ subs :: String -> [ (Char, String) ] -> String
 [] `subs` l = []
 
 
-runPartitions ps pk = do
+runPartitions ps pk = liftIO $ do
   templateCLI <- (join . (intersperse " ")) <$> getArgs
   l $ "Number of partitions to start: " ++ (show $ length ps)
   let numberedPartition = [0..] `zip` ps
@@ -233,7 +241,7 @@ runPartitions ps pk = do
     putStrLn $ "Some partitions failed: " ++ (show lefts)
     return $ Left lefts
 
-showNewScores (nk, nscores) = do
+showNewScores (nk, nscores) = liftIO $ do
   putStrLn "=== TEST SCORES ==="
   putStrLn $ "Test run startup time: "++(formatScore nk)
 
@@ -247,7 +255,7 @@ formatScore :: Double -> String
 formatScore s = printf "%.1f" s
 
 -- | Output an xUnit file
-outputXUnit fails = writeFile "xunit-weightbal.xml" $
+outputXUnit fails = liftIO $ writeFile "xunit-weightbal.xml" $
      "<testsuite tests=\"" ++ (show numPartitions) ++ "\">"
   ++ (concat $ map (\n -> shardStatus n) [0..numPartitions-1])
   ++ "</testsuite>"
