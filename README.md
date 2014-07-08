@@ -57,3 +57,7 @@ template to run in each partition, with substitutions:
   %S means the number of the worker.
 ```
 
+Each of those test partitions should report success or
+failure of all of its tests via unix return code, and
+if any of the partitions fail, weightbal will also
+return a non-zero unix return code.
