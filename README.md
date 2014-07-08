@@ -30,7 +30,7 @@ $ cat tests.sim
 
 Run one iteration like this:
 
- weightbal "for a in %T; do echo TEST \$a; sleep \$a; done"
+    weightbal "for a in %T; do echo TEST \$a; sleep \$a; done"
 
 This example uses the name of the test as a parameter to sleep,
 and over time the test scores should converge towards the
@@ -42,15 +42,18 @@ in between runs and the change will be detected.
 
 Commandline parameters:
 
+```
   -n N or --partitions=N
 
     sets the number of partitions to run. By default, 4.
+```
 
 The rest of the command line is used as a commandline
 template to run in each partition, with substitutions:
 
+```
   %T means the list of tests this worker should run.
 
   %S means the number of the worker.
-
+```
 
