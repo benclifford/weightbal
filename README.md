@@ -18,6 +18,7 @@ Create a test list called tests.sim, one test name per line.
 
 For example:
 
+```
 $ cat tests.sim
 1
 2
@@ -25,6 +26,7 @@ $ cat tests.sim
 5
 8
 13
+```
 
 Run one iteration like this:
 
