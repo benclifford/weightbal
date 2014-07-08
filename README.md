@@ -35,7 +35,7 @@ and over time the test scores should converge towards the
 name of the test, after a large number of runs.
 
 Scores are stores in scores.wb and output at the end of
-each run. Tests can be added or removes from tests.sim
+each run. Tests can be added or removed from tests.sim
 in between runs and the change will be detected.
 
 Commandline parameters:
