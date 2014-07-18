@@ -34,14 +34,18 @@ data Config = Config {
 
     _adj :: Double,
     _numPartitions :: Int,
-    _args :: [String]
+    _args :: [String],
+    _scoreFilename :: String,
+    _testsFilename :: String
   }
 
 defaultConfig = Config {
     _shuffleOrder = True,
     _adj = 0.2,
     _numPartitions = 4,
-    _args = []
+    _args = [],
+    _scoreFilename = "scores.wb",
+    _testsFilename = "tests.sim"
   }
 
 type WeightBalEnv = ReaderT Config IO
@@ -50,7 +54,6 @@ cliOptions = [
     Option "n" ["partitions"] (ReqArg (\param -> \c -> c { _numPartitions = read param} ) "NUM") "Number of partitions"
   ]
 
-scoreFilename = "scores.wb"
 
 main :: IO ()
 main = do
@@ -83,6 +86,7 @@ mainW = do
    hPutStr stderr "  "
    hPutStrLn stderr t
 
+ scoreFilename <- _scoreFilename <$> ask
  scoresExist <- liftIO $ doesFileExist scoreFilename
  (prevk, prevScores) <- if scoresExist then readScores else return (initialDefaultScore,[])
 
@@ -143,12 +147,18 @@ defaultScore prev = initialDefaultScore -- one minute by default, though this sh
 initialDefaultScore = 60
 
 readLiveTestList :: WeightBalEnv [String]
-readLiveTestList =  liftIO $ lines <$> readFile "tests.sim"
+readLiveTestList =  do
+  testsFilename <- _testsFilename <$> ask
+  liftIO $ lines <$> readFile testsFilename
 
 readScores :: WeightBalEnv (Double, [(String, Double)])
-readScores = liftIO $ read <$> readFile scoreFilename
+readScores = do
+  scoreFilename <- _scoreFilename <$> ask
+  liftIO $ read <$> readFile scoreFilename
 
-writeScores sc = liftIO $ writeFile scoreFilename (show sc)
+writeScores sc = do
+  scoreFilename <- _scoreFilename <$> ask
+  liftIO $ writeFile scoreFilename (show sc)
 
 dumpScores sc = liftIO $ forM_ sc $ \(name, time) -> do
   hPutStr stderr "  "
