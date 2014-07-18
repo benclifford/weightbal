@@ -52,6 +52,8 @@ type WeightBalEnv = ReaderT Config IO
 
 cliOptions = [
     Option "n" ["partitions"] (ReqArg (\param -> \c -> c { _numPartitions = read param} ) "NUM") "Number of partitions"
+  , Option "s" ["scores"] (ReqArg (\param -> \c -> c { _scoreFilename = param} ) "FILENAME") "Filename to buffer scores in between runs"
+  , Option "l" ["list"] (ReqArg (\param -> \c -> c { _testsFilename = param} ) "FILENAME") "Filename of test list"
   ]
 
 
