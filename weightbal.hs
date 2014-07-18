@@ -209,8 +209,6 @@ runPartitions ps pk = do
       let cmd = templateCLI `subs` [ ('S', (show shardnum))
                                    , ('T', testNames)
                                    ]
---      let cmd = "ssh -i ~/.ssh/id_root root@lulu.xeus.co.uk /home/benc/dockerfiles/functional-test-client2 " ++ commitid ++ " " ++ (show shardnum) ++ " http://${S3HOST}:1606" ++ (show shardnum) ++ "/xeus/ " ++ (testNames)
-      -- let cmd = "sleep " ++ (show $ ( fromInteger $ toInteger $ foldr (+) 0 ((ord . head . fst) <$> partition)) `div` 20 )
       putStrLn $ "Will run: " ++ cmd
       sTime <- getTime
       ec <- system $ cmd
