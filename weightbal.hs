@@ -41,7 +41,7 @@ data Config = Config {
 
 defaultConfig = Config {
     _shuffleOrder = True,
-    _adj = 0.2,
+    _adj = 0.5,
     _numPartitions = 4,
     _args = [],
     _scoreFilename = "scores.wb",
