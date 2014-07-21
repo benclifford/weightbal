@@ -97,8 +97,13 @@ mainW = do
 
  let newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
 
+ let unusedScores = filter (\(k,v) -> not (k `elem` liveTestList)) prevScores
+
  l $ "Scores loaded from previous run that are still relevant:"
  dumpScores newScores
+
+ l $ "Scores from previous run that are not relevant in this run:"
+ dumpScores unusedScores
 
  p <- optionallyShufflePartitions =<< partitionShards newScores
 
@@ -111,10 +116,11 @@ mainW = do
 
      let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) newScores
 
+     let scoresToStore = newScores' ++ unusedScores
      liftIO $ putStrLn $ "Scores to write out:"
-     dumpScores newScores'
-     writeScores (nk, newScores')
-     showNewScores (nk, newScores')
+     dumpScores scoresToStore
+     writeScores (nk, scoresToStore)
+     showNewScores (nk, scoresToStore)
 
      liftIO $ putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
      outputXUnit []
