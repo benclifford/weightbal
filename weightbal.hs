@@ -83,7 +83,7 @@ mainW = do
 
  liveTestList <- readLiveTestList
 
- l $ "Test list: "
+ l $ "List of specified tests: "
  forM_ liveTestList $ \t -> liftIO $ do
    hPutStr stderr "  "
    hPutStrLn stderr t
@@ -92,17 +92,17 @@ mainW = do
  scoresExist <- liftIO $ doesFileExist scoreFilename
  (prevk, prevScores) <- if scoresExist then readScores else return (initialDefaultScore,[])
 
- l $ "Previous scores:"
+ l $ "Scores loaded from previous run:"
  dumpScores prevScores
 
  let newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
 
- l $ "New scores:"
+ l $ "Scores loaded from previous run that are still relevant:"
  dumpScores newScores
 
  p <- optionallyShufflePartitions =<< partitionShards newScores
 
- l $ "Partitions: "
+ l $ "Partitions:"
  dumpPartitions p
 
  (res :: Either [Int] (Double, [(String, Double)])) <- runPartitions p prevk
