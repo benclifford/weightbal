@@ -11,6 +11,7 @@ import Data.Function (on)
 import Data.IORef
 import Data.List
 import Data.Maybe
+import Data.Traversable (for)
 import System.Cmd
 import System.Console.GetOpt
 import System.Directory (doesFileExist)
@@ -126,7 +127,8 @@ mainW = do
      outputXUnit []
      liftIO $ exitSuccess
    Left fails -> do
-     liftIO $ putStrLn $ "Outer: some partitions failed: " ++ (show fails)
+     liftIO $ putStrLn $ "Some partitions failed: "
+     for fails $ \p -> liftIO $ putStrLn $ "  Partition " ++ (show p) ++ " FAILED"
      outputXUnit fails
      liftIO $ exitFailure
 
@@ -279,9 +281,7 @@ runPartitions ps pk = do
     nk <- readIORef kRef
     putStrLn $ "new k: " ++ (show nk)
     return $ Right (nk, nscores)
-   else do
-    putStrLn $ "Some partitions failed: " ++ (show lefts)
-    return $ Left lefts
+   else return $ Left lefts
 
 showNewScores (nk, nscores) = liftIO $ do
   putStrLn "=== TEST SCORES ==="
