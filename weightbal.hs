@@ -151,7 +151,9 @@ randomlyPermuteList l = do
 
 l s = liftIO $ hPutStrLn stderr s
 
-defaultScore prev = initialDefaultScore -- one minute by default, though this should be calculated as an average of previous tests
+defaultScore prev = if prev == [] then initialDefaultScore
+  else median $ sort (snd <$> prev)
+
 initialDefaultScore = 60
 
 readLiveTestList :: WeightBalEnv [String]
@@ -305,4 +307,6 @@ outputXUnit fails = do
    shardStatus n = if n `elem` fails then
      "<testcase classname=\"sharding\" name=\"shard" ++ (show n) ++ "\"> <failure type=\"nonzeroReturnCode\">shard failed</failure></testcase>"
     else  "<testcase classname=\"sharding\" name=\"shard" ++ (show n) ++ "\"/>"
+
+median l = l !! (length l `div` 2)
 
