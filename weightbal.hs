@@ -37,7 +37,8 @@ data Config = Config {
     _requestedPartitions :: Int,
     _args :: [String],
     _scoreFilename :: String,
-    _testsFilename :: String
+    _testsFilename :: String,
+    _variablePartitions :: Bool
   }
 
 defaultConfig = Config {
@@ -46,7 +47,8 @@ defaultConfig = Config {
     _requestedPartitions = 4,
     _args = [],
     _scoreFilename = "scores.wb",
-    _testsFilename = "tests.sim"
+    _testsFilename = "tests.sim",
+    _variablePartitions = False
   }
 
 type WeightBalEnv = ReaderT Config IO
@@ -55,6 +57,7 @@ cliOptions = [
     Option "n" ["partitions"] (ReqArg (\param -> \c -> c { _requestedPartitions = read param} ) "NUM") "Number of partitions"
   , Option "s" ["scores"] (ReqArg (\param -> \c -> c { _scoreFilename = param} ) "FILENAME") "Filename to buffer scores in between runs"
   , Option "l" ["list"] (ReqArg (\param -> \c -> c { _testsFilename = param} ) "FILENAME") "Filename of test list"
+  , Option "v" ["variable"] (NoArg (\c -> c { _variablePartitions = True } )) "Vary number of partitions to find a good number"
   ]
 
 
@@ -93,6 +96,7 @@ mainW = do
  scoresExist <- liftIO $ doesFileExist scoreFilename
  (prevk, prevScores) <- if scoresExist then readScores else return (initialDefaultScore,[])
 
+
  l $ "Scores loaded from previous run:"
  dumpScores prevScores
 
@@ -104,22 +108,42 @@ mainW = do
  l $ "Scores from previous run that are not relevant in this run:"
  dumpScores unusedScores
 
- p <- optionallyShufflePartitions =<< partitionShards newScores
+ shardScoreFilename <- generateShardScoreFilename
+ shardScoresExist <- liftIO $ doesFileExist shardScoreFilename
+ shardScoreList <- if shardScoresExist then readShardScores else return []
+
+ l $ "Shard scores loaded from previous run:"
+ liftIO $ print shardScoreList
+
+ numPartitions <- _requestedPartitions <$> ask
+ variablePartitions <- _variablePartitions <$> ask
+
+ (numPartitionsToRun, scoresToRun) <- if variablePartitions
+   then generateVariablePartitionAndScores numPartitions newScores shardScoreList prevk
+   else return (numPartitions, newScores)
+
+ let prevnpk = prevNPKFor prevk shardScoreList numPartitions
+   -- XXX TODO: this needs to be populated out of the
+                 -- scores file based on the chosen numPartitionsToRun
+
+ p <- optionallyShufflePartitions =<< partitionShards numPartitionsToRun scoresToRun
 
  l $ "Partitions:"
  dumpPartitions p
 
- (res :: Either [Int] (Double, [(String, Double)])) <- runPartitions p prevk
+ (res :: Either [Int] ((Double, Double), [(String, Double)])) <- runPartitions p prevk prevnpk
  case res of
-   Right (nk, nscores) -> do
+   Right ((nk, nnpk), nscores) -> do
 
-     let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) newScores
+     let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) scoresToRun
 
      let scoresToStore = newScores' ++ unusedScores
      liftIO $ putStrLn $ "Scores to write out:"
      dumpScores scoresToStore
      writeScores (nk, scoresToStore)
      showNewScores (nk, scoresToStore)
+
+     writeUpdatedShardScores shardScoreList numPartitionsToRun nnpk
 
      liftIO $ putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
      outputXUnit []
@@ -130,11 +154,57 @@ mainW = do
      outputXUnit fails
      liftIO $ exitFailure
 
+prevNPKFor prevk (shardScoreList :: [(Int, Double)]) numPartitions = let
+  real = lookup numPartitions shardScoreList
+  mean = (foldr1 (+) $ map snd shardScoreList) / (fromInteger $ toInteger $ length shardScoreList)
+  in case real of
+    Just v -> v -- if we have a score, use that
+    Nothing | shardScoreList /= [] -> mean -- if we have no score, use the mean
+    Nothing | shardScoreList == [] -> prevk -- and if there's no mean, default to prevk
+
 partitionScores liveTestList prevScores = let
   newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
 
   unusedScores = filter (\(k,v) -> not (k `elem` liveTestList)) prevScores
   in (newScores, unusedScores)
+
+generateVariablePartitionAndScores numPartitions scores shardScores prevk = do
+
+  liftIO $ putStrLn "VARIABLE MODE"
+
+  -- for every number of nodes from 1 .. numPartitions:
+  pCosts <- forM [1..numPartitions] $ \np -> do
+    liftIO $ putStrLn $ "Considering case with " ++ (show np) ++ " workers"
+    -- score is the score for the base and the set of tests, but with
+    -- another constant added in that is the constant for that number of
+    -- nodes.
+    -- Partition the scores for this number of partitions, and then
+    -- add on the appropriate constant for this number of partitions.
+    -- We do not need to consider the global startup constant.
+    ps <- partitionShards np scores
+    liftIO $ putStrLn $ "ps = " ++ (show ps)
+    liftIO $ putStrLn $ "length ps = " ++ (show $ length ps)
+    let npCost = prevNPKFor prevk shardScores np
+    liftIO $ putStrLn $ "npCost = " ++ (show npCost)
+    let testsCost = foldr1 max -- find the biggest cost
+                  $ map (foldr (+) 0)  -- add the costs in each partition
+                  $ map (map snd) ps -- drop the test name and leave the cost
+    let partitionCost = testsCost + npCost
+    -- XXX TODO: add in the per-np overhead here
+    liftIO $ putStrLn $ "This partitioning costs " ++ (show partitionCost) ++ "s"
+    return (np, partitionCost)
+
+  liftIO $ do
+    putStrLn "Costs by number of partitions: "
+    forM_ pCosts $ \(np, cost) -> do
+      putStrLn $ (show np) ++ " partitions -> " ++ (show cost) ++ "s"
+
+  liftIO $ putStrLn "VARIABLE GENERATION FINISHED"
+
+  let cheapestPartition = fst $ head $ sortBy (compare `on` snd) pCosts
+
+  return (cheapestPartition, scores)
+-- XXX
 
 optionallyShufflePartitions :: Bal.Shards -> WeightBalEnv Bal.Shards
 optionallyShufflePartitions shards = do
@@ -176,6 +246,18 @@ writeScores sc = do
   scoreFilename <- _scoreFilename <$> ask
   liftIO $ writeFile scoreFilename (show sc)
 
+readShardScores :: WeightBalEnv [(Int, Double)]
+readShardScores = do
+  scoreFilename <- generateShardScoreFilename
+  liftIO $ read <$> readFile scoreFilename
+
+writeUpdatedShardScores shardScores np nnpk = do
+  let prunedList = filter ((\(n,v) -> n /= np)) shardScores
+  let newList = prunedList ++ [ (np, nnpk) ]
+  
+  filename <- generateShardScoreFilename
+  liftIO $ writeFile filename (show newList)
+
 dumpScores sc = liftIO $ forM_ sc $ \(name, time) -> do
   hPutStr stderr "  "
   hPutStr stderr name
@@ -190,8 +272,7 @@ dumpPartitions ps = liftIO $ forM_ (ps `zip` [0..]) $ \(p, n) -> do
 
 -- the number of shards to run is encoded here as unary [] entries
 -- in the empty shard list.
-partitionShards scores = do
-  numPartitions <- _requestedPartitions <$> ask
+partitionShards numPartitions scores = do
   let emptyPartitions = take numPartitions $ repeat []
   return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
 
@@ -207,8 +288,11 @@ subs :: String -> [ (Char, String) ] -> String
 (c:rest) `subs` l = c:(rest `subs` l)
 [] `subs` l = []
 
+generateShardScoreFilename = do
+  base <- _scoreFilename <$> ask
+  return $ base ++ ".ssf"
 
-runPartitions ps pk = do
+runPartitions ps pk pnpk = do
  adj <- _adj <$> ask
  args <- _args <$> ask
  liftIO $ do
@@ -221,9 +305,10 @@ runPartitions ps pk = do
     dumpScores partition
     let testNames = join $ intersperse " " (fst <$> partition)
     let shardnum = np
-    let cmd = templateCLI `subs` [ ('S', (show shardnum))
-                                 , ('T', testNames)
-                                 , ('%', "%")
+    let cmd = templateCLI `subs` [ ('S', (show shardnum)) -- number of this shard
+                                 , ('T', testNames) -- list of tests for this partition
+                                 , ('N', (show (length ps))) -- number of shards
+                                 , ('%', "%") -- constant %
                                  ]
     putStrLn $ "Will run: " ++ cmd
     forkIO $ do
@@ -237,16 +322,16 @@ runPartitions ps pk = do
         ExitFailure f -> do
           putMVar mv (Left f)
     return (np, mv)
-  kRef <- newIORef pk
+  kRef <- newIORef (pk, pnpk)
   nparts <- forM mvIDs $ \(np, m) -> do
-    kNow <- readIORef kRef
+    (kNow, kNPNow) <- readIORef kRef
     putStrLn $ "Waiting for partition " ++ (show np)
 
     thrOut <- takeMVar m
     case thrOut of
       (Right v@(partition, score)) -> do
         putStrLn $ "Got result: " ++ (show v)
-        let prediction = kNow + foldr (+) 0 (snd <$> partition)
+        let prediction = kNow + kNPNow + foldr (+) 0 (snd <$> partition)
         putStrLn $ "Predicted time: " ++ (formatScore prediction) ++ "s"
         putStrLn $ "Actual time: " ++ (formatScore score) ++ "s"
         let e = score - prediction
@@ -260,8 +345,10 @@ runPartitions ps pk = do
         let numParts = fromInteger $ toInteger $ length ps
         let kApp = (1+app) ** (1/numParts)
     -- use a different scale for k to attent to account for the fact
-    -- that it happens once per partition, not once per run
-        writeIORef kRef (kNow * kApp)
+    -- that it happens once per partition, not once per run.
+    -- TODO: check the maths of this now that its also used for kNPNow
+    -- I think it is OK but unsure...
+        writeIORef kRef ((kNow * kApp), (kNPNow * kApp))
 
         putStrLn $ "New partition scores:"
         dumpScores npart

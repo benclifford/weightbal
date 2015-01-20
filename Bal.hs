@@ -7,7 +7,7 @@ module Bal where
   tests = [("a",10), ("b", 20), ("c", 5), ("d", 100)] :: Shard
 
   type Test = (String, Double)
-  type Shard = [Test]
+  type Shard = [Test] 
   type Shards = [ Shard ]
 
   emptyShards = [[], [], []] :: Shards
