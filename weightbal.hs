@@ -34,7 +34,7 @@ data Config = Config {
     _shuffleOrder :: Bool,
 
     _adj :: Double,
-    _numPartitions :: Int,
+    _requestedPartitions :: Int,
     _args :: [String],
     _scoreFilename :: String,
     _testsFilename :: String
@@ -43,7 +43,7 @@ data Config = Config {
 defaultConfig = Config {
     _shuffleOrder = True,
     _adj = 0.5,
-    _numPartitions = 4,
+    _requestedPartitions = 4,
     _args = [],
     _scoreFilename = "scores.wb",
     _testsFilename = "tests.sim"
@@ -52,7 +52,7 @@ defaultConfig = Config {
 type WeightBalEnv = ReaderT Config IO
 
 cliOptions = [
-    Option "n" ["partitions"] (ReqArg (\param -> \c -> c { _numPartitions = read param} ) "NUM") "Number of partitions"
+    Option "n" ["partitions"] (ReqArg (\param -> \c -> c { _requestedPartitions = read param} ) "NUM") "Number of partitions"
   , Option "s" ["scores"] (ReqArg (\param -> \c -> c { _scoreFilename = param} ) "FILENAME") "Filename to buffer scores in between runs"
   , Option "l" ["list"] (ReqArg (\param -> \c -> c { _testsFilename = param} ) "FILENAME") "Filename of test list"
   ]
@@ -200,7 +200,7 @@ partitionShardsRandom scores = do
 -- the number of shards to run is encoded here as unary [] entries
 -- in the empty shard list.
 partitionShardsBalanced scores = do
-  numPartitions <- _numPartitions <$> ask
+  numPartitions <- _requestedPartitions <$> ask
   let emptyPartitions = take numPartitions $ repeat []
   return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
 
@@ -302,7 +302,7 @@ formatScore s = printf "%.1f" s
 
 -- | Output an xUnit file
 outputXUnit fails = do
- numPartitions <- _numPartitions <$> ask
+ numPartitions <- _requestedPartitions <$> ask
  liftIO $ writeFile "xunit-weightbal.xml" $
      "<testsuite tests=\"" ++ (show numPartitions) ++ "\">"
   ++ (concat $ map (\n -> shardStatus n) [0..numPartitions-1])
