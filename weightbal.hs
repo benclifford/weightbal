@@ -232,6 +232,7 @@ runPartitions ps pk = do
     let shardnum = np
     let cmd = templateCLI `subs` [ ('S', (show shardnum))
                                  , ('T', testNames)
+                                 , ('%', "%")
                                  ]
     putStrLn $ "Will run: " ++ cmd
     forkIO $ do
