@@ -96,9 +96,7 @@ mainW = do
  l $ "Scores loaded from previous run:"
  dumpScores prevScores
 
- let newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
-
- let unusedScores = filter (\(k,v) -> not (k `elem` liveTestList)) prevScores
+ let (newScores, unusedScores) = partitionScores liveTestList prevScores
 
  l $ "Scores loaded from previous run that are still relevant:"
  dumpScores newScores
@@ -131,6 +129,12 @@ mainW = do
      for fails $ \p -> liftIO $ putStrLn $ "  Partition " ++ (show p) ++ " FAILED"
      outputXUnit fails
      liftIO $ exitFailure
+
+partitionScores liveTestList prevScores = let
+  newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
+
+  unusedScores = filter (\(k,v) -> not (k `elem` liveTestList)) prevScores
+  in (newScores, unusedScores)
 
 optionallyShufflePartitions :: Bal.Shards -> WeightBalEnv Bal.Shards
 optionallyShufflePartitions shards = do
