@@ -184,22 +184,9 @@ dumpPartitions ps = liftIO $ forM_ (ps `zip` [0..]) $ \(p, n) -> do
   hPutStrLn stderr $ "=== Partition " ++ (show n) ++ " ==="
   dumpScores p
 
-partitionShards = partitionShardsBalanced
-
--- | a pretty bad partitioning function...
-partitionShardsRandom scores = do
-  l <- forM scores $ \s -> do
-    part <- liftIO $ randomRIO (0,2 :: Integer)
-    return (s, part)
-  return [
-      map fst $ filter (\(_,p) -> p == 0) l,
-      map fst $ filter (\(_,p) -> p == 1) l,
-      map fst $ filter (\(_,p) -> p == 2) l
-    ]
-
 -- the number of shards to run is encoded here as unary [] entries
 -- in the empty shard list.
-partitionShardsBalanced scores = do
+partitionShards scores = do
   numPartitions <- _requestedPartitions <$> ask
   let emptyPartitions = take numPartitions $ repeat []
   return $ foldr Bal.foldScoreIntoShards emptyPartitions $ sortBy (compare `on` snd) scores
