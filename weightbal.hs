@@ -209,7 +209,10 @@ getTime = (liftIO getClockTime) >>= (\(TOD sec _) -> return sec)
 -- take a string with %X single letter substitutions and
 -- substitute in the supplied substitutions
 subs :: String -> [ (Char, String) ] -> String
-('%':k:rest) `subs` l = (fromJust $ lookup k l) ++ (rest `subs` l)
+('%':k:rest) `subs` l = (fromMaybe (error ("Unknown substitution %"++[k])) 
+                                   (lookup k l)
+                        )
+                        ++ (rest `subs` l)
 (c:rest) `subs` l = c:(rest `subs` l)
 [] `subs` l = []
 
