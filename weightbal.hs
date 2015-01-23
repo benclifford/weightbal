@@ -51,6 +51,8 @@ defaultConfig = Config {
     _variablePartitions = False
   }
 
+defaultShardCost = 1
+
 type WeightBalEnv = ReaderT Config IO
 
 cliOptions = [
@@ -118,22 +120,21 @@ mainW = do
  numPartitions <- _requestedPartitions <$> ask
  variablePartitions <- _variablePartitions <$> ask
 
- (numPartitionsToRun, scoresToRun) <- if variablePartitions
-   then generateVariablePartitionAndScores numPartitions newScores shardScoreList prevk
-   else return (numPartitions, newScores)
+ let scoresToRun = newScores
+ numPartitionsToRun <- if variablePartitions
+   then (jiggle numPartitions) =<< (generateVariablePartitionAndScores numPartitions newScores shardScoreList prevk)
+   else return numPartitions
 
  let prevnpk = prevNPKFor prevk shardScoreList numPartitions
-   -- XXX TODO: this needs to be populated out of the
-                 -- scores file based on the chosen numPartitionsToRun
 
  p <- optionallyShufflePartitions =<< partitionShards numPartitionsToRun scoresToRun
 
  l $ "Partitions:"
  dumpPartitions p
 
- (res :: Either [Int] ((Double, Double), [(String, Double)])) <- runPartitions p prevk prevnpk
+ (res :: Either [Int] (Double, [(String, Double)], Double)) <- runPartitions p prevk prevnpk
  case res of
-   Right ((nk, nnpk), nscores) -> do
+   Right (nk, nscores, nka) -> do
 
      let newScores' = map (\(n,os) -> (n, fromMaybe os $ lookup n nscores)) scoresToRun
 
@@ -143,7 +144,7 @@ mainW = do
      writeScores (nk, scoresToStore)
      showNewScores (nk, scoresToStore)
 
-     writeUpdatedShardScores shardScoreList numPartitionsToRun nnpk
+     writeUpdatedShardScores prevk shardScoreList numPartitionsToRun nka
 
      liftIO $ putStrLn $ "Theoretical test time per shard: " ++ (formatScore $ nk + (foldr1 (+) (map snd newScores')) / (fromInteger $ toInteger $ length p))
      outputXUnit []
@@ -154,13 +155,24 @@ mainW = do
      outputXUnit fails
      liftIO $ exitFailure
 
+jiggle :: Int -> Int -> ReaderT Config IO Int
+jiggle maxPartitions chosenPartitions = do
+  jiggleNum <- liftIO $ randomRIO (0, 1 :: Double)
+  if jiggleNum > 0.5
+    then return chosenPartitions
+    else do upDown <- liftIO $ randomRIO (False, True)
+            case upDown of
+              False -> return $ (chosenPartitions + 1) `min` maxPartitions
+              True -> return $ (chosenPartitions - 1) `max` 1
+  
+
 prevNPKFor prevk (shardScoreList :: [(Int, Double)]) numPartitions = let
   real = lookup numPartitions shardScoreList
   mean = (foldr1 (+) $ map snd shardScoreList) / (fromInteger $ toInteger $ length shardScoreList)
   in case real of
     Just v -> v -- if we have a score, use that
     Nothing | shardScoreList /= [] -> mean -- if we have no score, use the mean
-    Nothing | shardScoreList == [] -> prevk -- and if there's no mean, default to prevk
+    Nothing | shardScoreList == [] -> defaultShardCost -- and if we have no shard scores at all...
 
 partitionScores liveTestList prevScores = let
   newScores = map (\lt -> (lt, fromMaybe (defaultScore prevScores) $ lookup lt prevScores)) liveTestList
@@ -169,8 +181,6 @@ partitionScores liveTestList prevScores = let
   in (newScores, unusedScores)
 
 generateVariablePartitionAndScores numPartitions scores shardScores prevk = do
-
-  liftIO $ putStrLn "VARIABLE MODE"
 
   -- for every number of nodes from 1 .. numPartitions:
   pCosts <- forM [1..numPartitions] $ \np -> do
@@ -199,12 +209,9 @@ generateVariablePartitionAndScores numPartitions scores shardScores prevk = do
     forM_ pCosts $ \(np, cost) -> do
       putStrLn $ (show np) ++ " partitions -> " ++ (show cost) ++ "s"
 
-  liftIO $ putStrLn "VARIABLE GENERATION FINISHED"
-
   let cheapestPartition = fst $ head $ sortBy (compare `on` snd) pCosts
 
-  return (cheapestPartition, scores)
--- XXX
+  return cheapestPartition
 
 optionallyShufflePartitions :: Bal.Shards -> WeightBalEnv Bal.Shards
 optionallyShufflePartitions shards = do
@@ -251,9 +258,10 @@ readShardScores = do
   scoreFilename <- generateShardScoreFilename
   liftIO $ read <$> readFile scoreFilename
 
-writeUpdatedShardScores shardScores np nnpk = do
+writeUpdatedShardScores prevk shardScores np nka = do
+  let old = prevNPKFor prevk shardScores np
   let prunedList = filter ((\(n,v) -> n /= np)) shardScores
-  let newList = prunedList ++ [ (np, nnpk) ]
+  let newList = prunedList ++ [ (np, old * nka) ]
   
   filename <- generateShardScoreFilename
   liftIO $ writeFile filename (show newList)
@@ -322,16 +330,17 @@ runPartitions ps pk pnpk = do
         ExitFailure f -> do
           putMVar mv (Left f)
     return (np, mv)
-  kRef <- newIORef (pk, pnpk)
+  kRef <- newIORef pk
+  maxKAppRef <- newIORef (0, 1)
   nparts <- forM mvIDs $ \(np, m) -> do
-    (kNow, kNPNow) <- readIORef kRef
+    kNow <- readIORef kRef
     putStrLn $ "Waiting for partition " ++ (show np)
 
     thrOut <- takeMVar m
     case thrOut of
       (Right v@(partition, score)) -> do
         putStrLn $ "Got result: " ++ (show v)
-        let prediction = kNow + kNPNow + foldr (+) 0 (snd <$> partition)
+        let prediction = kNow + foldr (+) 0 (snd <$> partition)
         putStrLn $ "Predicted time: " ++ (formatScore prediction) ++ "s"
         putStrLn $ "Actual time: " ++ (formatScore score) ++ "s"
         let e = score - prediction
@@ -346,23 +355,26 @@ runPartitions ps pk pnpk = do
         let kApp = (1+app) ** (1/numParts)
     -- use a different scale for k to attent to account for the fact
     -- that it happens once per partition, not once per run.
-    -- TODO: check the maths of this now that its also used for kNPNow
-    -- I think it is OK but unsure...
-        writeIORef kRef ((kNow * kApp), (kNPNow * kApp))
+        writeIORef kRef (kNow * kApp)
 
         putStrLn $ "New partition scores:"
         dumpScores npart
+
+        atomicModifyIORef maxKAppRef (\(s, ka) -> if score > s then ((score, kApp), ()) else ((s, ka),()))
+
         return $ Right npart
       (Left err) -> return  $ Left np
 
-  let (lefts :: [Int], rights :: [[(String, Double)]]) = partitionEithers nparts
+  let (lefts :: [Int], rights) = partitionEithers nparts
   if lefts == [] then do
+    maxKApp <- snd <$> readIORef maxKAppRef
+    putStrLn $ "maxKApp = " ++ (show maxKApp)
     let nscores = join rights
     putStrLn $ "All tested scores:"
     dumpScores nscores
     nk <- readIORef kRef
     putStrLn $ "new k: " ++ (show nk)
-    return $ Right (nk, nscores)
+    return $ Right (nk, nscores, maxKApp)
    else return $ Left lefts
 
 showNewScores (nk, nscores) = liftIO $ do
