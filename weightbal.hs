@@ -53,8 +53,6 @@ defaultConfig = Config {
     _fakeTest = False
   }
 
-defaultShardRuntime = 1
-
 shardRuntimeDecayFactor = 0.8
 
 type WeightBalEnv = ReaderT Config IO
