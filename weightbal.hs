@@ -38,7 +38,8 @@ data Config = Config {
     _args :: [String],
     _scoreFilename :: String,
     _testsFilename :: String,
-    _variablePartitions :: Bool
+    _variablePartitions :: Bool,
+    _fakeTest :: Bool
   }
 
 defaultConfig = Config {
@@ -48,7 +49,8 @@ defaultConfig = Config {
     _args = [],
     _scoreFilename = "scores.wb",
     _testsFilename = "tests.sim",
-    _variablePartitions = False
+    _variablePartitions = False,
+    _fakeTest = False
   }
 
 defaultShardCost = 1
@@ -60,6 +62,7 @@ cliOptions = [
   , Option "s" ["scores"] (ReqArg (\param -> \c -> c { _scoreFilename = param} ) "FILENAME") "Filename to buffer scores in between runs"
   , Option "l" ["list"] (ReqArg (\param -> \c -> c { _testsFilename = param} ) "FILENAME") "Filename of test list"
   , Option "v" ["variable"] (NoArg (\c -> c { _variablePartitions = True } )) "Vary number of partitions to find a good number"
+  , Option "" ["fake"] (NoArg (\c -> c { _fakeTest = True } )) "Fake test mode"
   ]
 
 
@@ -301,6 +304,7 @@ generateShardScoreFilename = do
   return $ base ++ ".ssf"
 
 runPartitions ps pk pnpk = do
+ fakeTest <- _fakeTest <$> ask
  adj <- _adj <$> ask
  args <- _args <$> ask
  liftIO $ do
@@ -319,16 +323,19 @@ runPartitions ps pk pnpk = do
                                  , ('%', "%") -- constant %
                                  ]
     putStrLn $ "Will run: " ++ cmd
-    forkIO $ do
-      sTime <- getTime
-      ec <- system $ cmd
-      eTime <- getTime
-      case ec of
-        ExitSuccess ->  do
-          let (score :: Double) = fromInteger (eTime - sTime)
-          putMVar mv (Right (partition,score :: Double))
-        ExitFailure f -> do
-          putMVar mv (Left f)
+    forkIO $
+      if not fakeTest
+      then do
+        sTime <- getTime
+        ec <- system $ cmd
+        eTime <- getTime
+        case ec of
+          ExitSuccess ->  do
+            let (score :: Double) = fromInteger (eTime - sTime)
+            putMVar mv (Right (partition,score :: Double))
+          ExitFailure f -> do
+            putMVar mv (Left f)
+      else putMVar mv (Right (partition, fromInteger $ toInteger $ (length ps) * 4 + (foldr1 (+) $ map (read . fst) partition)))
     return (np, mv)
   kRef <- newIORef pk
   maxKAppRef <- newIORef (0, 1)
