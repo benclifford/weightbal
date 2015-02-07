@@ -130,6 +130,8 @@ mainW = do
    then jiggle numPartitions (cheapestPartition numPartitions shardScoreList)
    else return numPartitions
 
+ l $ "Number of partitions to run: " ++ (show numPartitionsToRun) ++ " out of maximum " ++ (show numPartitions)
+
 --  let prevnpk = prevNPKFor prevk shardScoreList numPartitions
 
  p <- optionallyShufflePartitions =<< partitionShards numPartitionsToRun scoresToRun
@@ -176,10 +178,11 @@ jiggle maxPartitions chosenPartitions = do
   jiggleNum <- liftIO $ randomRIO (0, 1 :: Double)
   if jiggleNum > jiggleFraction
     then return chosenPartitions
-    else do upDown <- liftIO $ randomRIO (False, True)
+    else do liftIO $ l "Jiggle!"
+            upDown <- liftIO $ randomRIO (False, True)
             case upDown of
-              False -> return $ (chosenPartitions + 1) `min` maxPartitions
-              True -> return $ (chosenPartitions - 1) `max` 1
+              False -> l "Jiggle up" >> (return $ (chosenPartitions + 1) `min` maxPartitions)
+              True -> l "Jiggle down" >> (return $ (chosenPartitions - 1) `max` 1)
   
 {-
 prevNPKFor prevk (shardScoreList :: [(Int, Double)]) numPartitions = let
