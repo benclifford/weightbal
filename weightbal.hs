@@ -120,7 +120,7 @@ mainW = do
  shardScoreList <- if shardScoresExist then readShardScores else return []
 
  l $ "Shard scores loaded from previous run:"
- liftIO $ print shardScoreList
+ liftIO $ mapM_ printShardScore $ sortBy (compare `on` fst) shardScoreList
 
  numPartitions <- _requestedPartitions <$> ask
  variablePartitions <- _variablePartitions <$> ask
@@ -276,6 +276,8 @@ readShardScores :: WeightBalEnv [(Int, Double)]
 readShardScores = do
   scoreFilename <- generateShardScoreFilename
   liftIO $ read <$> readFile scoreFilename
+
+printShardScore (num, time) = putStrLn $ (show num) ++ " shards: " ++ (formatScore time) ++ "s"
 
 writeShardScores shardScores = do
   filename <- generateShardScoreFilename
