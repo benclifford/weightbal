@@ -55,6 +55,9 @@ defaultConfig = Config {
 
 shardRuntimeDecayFactor = 0.8
 
+-- | The fraction of the time that we will jiggle the number of partitions
+jiggleFraction = 0.4
+
 type WeightBalEnv = ReaderT Config IO
 
 cliOptions = [
@@ -70,7 +73,6 @@ main :: IO ()
 main = do
  l "weightbal"
  cli <- getArgs
- l $ "Args: " ++ (show cli)
 
  let (os, args, unrecogniseds, errors) = getOpt' RequireOrder cliOptions cli
 
@@ -172,7 +174,7 @@ cheapestPartition _ shardScores = fst $ head $ sortBy (compare `on` snd) shardSc
 jiggle :: Int -> Int -> ReaderT Config IO Int
 jiggle maxPartitions chosenPartitions = do
   jiggleNum <- liftIO $ randomRIO (0, 1 :: Double)
-  if jiggleNum > 0.5
+  if jiggleNum > jiggleFraction
     then return chosenPartitions
     else do upDown <- liftIO $ randomRIO (False, True)
             case upDown of
